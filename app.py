@@ -93,87 +93,179 @@ def kpi(label,value,note):
 def page_header(title,description,tag="MISSION ANALYTICS"):
     st.markdown(f'<div class="topbar"><div><div class="eyebrow">{tag}</div><h1>{title}</h1><div class="subtitle">{description}</div></div><div class="status-pill">● Dataset online · 10,000 records</div></div>',unsafe_allow_html=True)
 
-raw_data=generate_dataset(); data,missing_before,duplicates_removed=clean_dataset(raw_data); models,metrics=train_models(data)
+
+raw_data=generate_dataset()
+data,missing_before,duplicates_removed=clean_dataset(raw_data)
+models,metrics=train_models(data)
+
+missing_summary=pd.DataFrame({
+    "Feature": missing_before.index,
+    "Missing Before": missing_before.values,
+})
+missing_summary["Missing After"]=data[missing_summary["Feature"]].isna().sum().values
+missing_summary["Cleaning Result"]="Cleaned / no missing values"
 
 with st.sidebar:
     st.markdown('<div class="brand"><span class="brand-mark">◈</span> ORBITAL ENGINE</div>',unsafe_allow_html=True)
-    st.markdown('<div class="side-label">Workspace</div>',unsafe_allow_html=True)
-    page=st.radio("Workspace",["Overview","Data Explorer","Model Lab","Mission Evaluator"],label_visibility="collapsed")
-    st.markdown('<div class="side-label">Dataset filters</div>',unsafe_allow_html=True)
-    selected_agencies=st.multiselect("Agency",AGENCIES,default=AGENCIES,label_visibility="collapsed")
-    selected_status=st.multiselect("Status",["Success","Partial Failure","Critical Failure"],default=["Success","Partial Failure","Critical Failure"],label_visibility="collapsed")
-    filtered=data[data["agency_type"].isin(selected_agencies)&data["primary_status_rating"].isin(selected_status)].copy()
-    st.divider(); st.caption(f"{len(filtered):,} records in view"); st.caption(f"Updated {datetime.now().strftime('%H:%M:%S')}"); st.caption("Synthetic dataset · deterministic seed")
+    st.markdown('<div class="side-label">Project flow</div>',unsafe_allow_html=True)
+    page=st.radio(
+        "Project flow",
+        ["1 · Actual Dataset","2 · Data Cleaning","3 · Exploratory Analysis","4 · Model Comparison","5 · Predict Performance"],
+        label_visibility="collapsed",
+    )
+    st.divider()
+    st.markdown('<div class="side-label">Mini project</div>',unsafe_allow_html=True)
+    st.caption("Space-mission cost analytics")
+    st.caption("10,000 records · 12 columns")
+    st.caption("No login required")
 
-if page=="Overview":
-    page_header("Mission portfolio at a glance","A clean view of cost, mission outcomes, and the patterns hiding inside the dataset.")
+if page=="1 · Actual Dataset":
+    page_header(
+        "1. Actual dataset",
+        "Start here. This is the raw dataset generated for the space-mission domain, before any cleaning or preprocessing.",
+        "STEP 01 · RAW DATA"
+    )
     c1,c2,c3,c4=st.columns(4)
-    with c1:kpi("Records",f"{len(filtered):,}","filtered mission records")
-    with c2:kpi("Avg. mission cost",f"USD {filtered[TARGET].mean():,.1f}M","final modeled cost")
-    with c3:kpi("Success rate",f"{(filtered.primary_status_rating=='Success').mean()*100:.1f}%","mission status rating")
-    with c4:kpi("Avg. budget",f"USD {filtered.budget_millions_usd.mean():,.1f}M","planned mission budget")
-    st.markdown('<div class="insight"><b>What this dashboard is for:</b> explore a synthetic space-mission dataset, understand cost drivers, compare two regression models, and test a new mission without dealing with a login wall.</div>',unsafe_allow_html=True)
+    with c1:kpi("Records",f"{len(raw_data):,}","raw rows")
+    with c2:kpi("Columns",f"{raw_data.shape[1]}","features + target + status")
+    with c3:kpi("Missing cells",f"{int(raw_data.isna().sum().sum()):,}","present before cleaning")
+    with c4:kpi("Duplicate rows",f"{int(raw_data.duplicated().sum()):,}","checked before cleaning")
+    st.markdown('<div class="insight"><b>What is this data?</b><br>A synthetic space-mission dataset representing agencies, payload, orbit altitude, budget, fuel efficiency, risk mitigation, testing effort, crewed missions, launch-window alignment, final mission cost, and mission outcome.</div>',unsafe_allow_html=True)
+    st.markdown('<div class="section">Raw dataset preview</div>',unsafe_allow_html=True)
+    st.dataframe(raw_data.head(100),use_container_width=True,hide_index=True,height=470)
+    st.markdown('<div class="section">Column guide</div>',unsafe_allow_html=True)
+    guide=pd.DataFrame([
+        ["agency_type","Mission organization / agency","Category"],
+        ["payload_mass_kg","Payload carried by the mission","Numeric"],
+        ["orbit_altitude_km","Target orbit altitude","Numeric"],
+        ["budget_millions_usd","Planned mission budget","Numeric"],
+        ["fuel_efficiency_score","Propulsion/fuel efficiency score","Numeric"],
+        ["risk_mitigation_index","Risk mitigation level from 0 to 1","Numeric"],
+        ["testing_hours_logged","Recorded testing effort","Numeric"],
+        ["crewed_status","Whether the mission is crewed","Category"],
+        ["window_alignment_pct","Launch-window alignment percentage","Numeric"],
+        ["final_mission_cost_millions","Final mission cost — prediction target","Target"],
+        ["primary_status_rating","Mission outcome rating","Category"],
+    ],columns=["Column","Meaning","Type"])
+    st.dataframe(guide,use_container_width=True,hide_index=True)
+
+elif page=="2 · Data Cleaning":
+    page_header(
+        "2. Data cleaning & preprocessing",
+        "See exactly what was missing, what was changed, and how the cleaned dataset is prepared for analysis and machine learning.",
+        "STEP 02 · CLEANING"
+    )
+    c1,c2,c3=st.columns(3)
+    with c1:kpi("Rows before",f"{len(raw_data):,}","raw dataset")
+    with c2:kpi("Missing cells fixed",f"{int(missing_before.sum()):,}","median imputation")
+    with c3:kpi("Duplicate rows removed",f"{duplicates_removed:,}","duplicate check")
+    st.markdown('<div class="section">What was cleaned?</div>',unsafe_allow_html=True)
+    cleaning_cards=[
+        ("01","Missing fuel efficiency","300 values were missing. They were filled with the median fuel-efficiency score of the available records."),
+        ("02","Missing window alignment","200 values were missing. They were filled with the median window-alignment percentage."),
+        ("03","Duplicate records","The complete rows were checked for duplicates. None were found, so no valid record was removed."),
+        ("04","Model preprocessing","Numeric inputs are median-imputed and standardized; categorical inputs are filled with the most frequent value and one-hot encoded inside the model pipeline."),
+    ]
+    for number,title,body in cleaning_cards:
+        st.markdown(f'<div class="insight"><b>{number} · {title}</b><br>{body}</div>',unsafe_allow_html=True)
+    st.markdown('<div class="section">Before vs after</div>',unsafe_allow_html=True)
+    shown=missing_summary[missing_summary["Missing Before"]>0].copy()
+    st.dataframe(shown,use_container_width=True,hide_index=True)
+    st.markdown('<div class="section">Cleaned dataset preview</div>',unsafe_allow_html=True)
+    st.dataframe(data.head(100),use_container_width=True,hide_index=True,height=430)
+    st.success("Cleaning complete: the analytical dataset has no missing values and is ready for EDA and model training.")
+
+elif page=="3 · Exploratory Analysis":
+    page_header(
+        "3. Exploratory analysis",
+        "Now that the data is clean, we look for distributions, relationships, and patterns before comparing models.",
+        "STEP 03 · EDA"
+    )
+    c1,c2,c3,c4=st.columns(4)
+    with c1:kpi("Clean records",f"{len(data):,}","ready for analysis")
+    with c2:kpi("Avg. mission cost",f"USD {data[TARGET].mean():,.1f}M","final modeled cost")
+    with c3:kpi("Success rate",f"{(data.primary_status_rating=='Success').mean()*100:.1f}%","mission outcome")
+    with c4:kpi("Avg. budget",f"USD {data.budget_millions_usd.mean():,.1f}M","planned budget")
     left,right=st.columns([1.35,.9])
     with left:
-        fig=px.histogram(filtered,x=TARGET,nbins=42,title="Final mission cost distribution",color_discrete_sequence=["#55d6ff"]);fig.update_traces(opacity=.85);st.plotly_chart(chart_layout(fig,390),use_container_width=True)
+        fig=px.histogram(data,x=TARGET,nbins=42,title="Final mission cost distribution",color_discrete_sequence=["#55d6ff"])
+        fig.update_traces(opacity=.85)
+        st.plotly_chart(chart_layout(fig,390),use_container_width=True)
     with right:
-        counts=filtered.primary_status_rating.value_counts().rename_axis("Status").reset_index(name="Missions")
-        fig=px.pie(counts,names="Status",values="Missions",hole=.68,title="Mission outcome mix",color="Status",color_discrete_map={"Success":"#5ee6a8","Partial Failure":"#ffad66","Critical Failure":"#ff647c"});st.plotly_chart(chart_layout(fig,390),use_container_width=True)
-    st.markdown('<div class="section">Cost and performance</div>',unsafe_allow_html=True)
+        counts=data.primary_status_rating.value_counts().rename_axis("Status").reset_index(name="Missions")
+        fig=px.pie(counts,names="Status",values="Missions",hole=.68,title="Mission outcome mix",color="Status",color_discrete_map={"Success":"#5ee6a8","Partial Failure":"#ffad66","Critical Failure":"#ff647c"})
+        st.plotly_chart(chart_layout(fig,390),use_container_width=True)
     left,right=st.columns(2)
     with left:
-        fig=px.scatter(filtered.sample(min(2500,len(filtered)),random_state=42),x="budget_millions_usd",y=TARGET,color="agency_type",hover_data=["mission_id","primary_status_rating"],title="Budget vs. final mission cost",color_discrete_sequence=["#55d6ff","#8b7cff","#5ee6a8"]);st.plotly_chart(chart_layout(fig,400),use_container_width=True)
+        fig=px.scatter(data.sample(min(2500,len(data)),random_state=42),x="budget_millions_usd",y=TARGET,color="agency_type",hover_data=["mission_id","primary_status_rating"],title="Budget vs. final mission cost",color_discrete_sequence=["#55d6ff","#8b7cff","#5ee6a8"])
+        st.plotly_chart(chart_layout(fig,400),use_container_width=True)
     with right:
-        agency_cost=filtered.groupby("agency_type",as_index=False)[TARGET].mean().sort_values(TARGET)
-        fig=px.bar(agency_cost,x=TARGET,y="agency_type",orientation="h",title="Average cost by agency",color=TARGET,color_continuous_scale=["#203b58","#55d6ff"]);fig.update_coloraxes(showscale=False);st.plotly_chart(chart_layout(fig,400),use_container_width=True)
+        agency_cost=data.groupby("agency_type",as_index=False)[TARGET].mean().sort_values(TARGET)
+        fig=px.bar(agency_cost,x=TARGET,y="agency_type",orientation="h",title="Average cost by agency",color=TARGET,color_continuous_scale=["#203b58","#55d6ff"])
+        fig.update_coloraxes(showscale=False)
+        st.plotly_chart(chart_layout(fig,400),use_container_width=True)
+    corr=data.select_dtypes(include=np.number).corr().round(2)
+    fig=px.imshow(corr,text_auto=True,color_continuous_scale="RdBu_r",zmin=-1,zmax=1,title="Numeric correlation matrix",aspect="auto")
+    st.plotly_chart(chart_layout(fig,560),use_container_width=True)
 
-elif page=="Data Explorer":
-    page_header("Explore the dataset","Filter, inspect, and understand the records before touching the models.","DATA EXPLORER")
-    c1,c2,c3=st.columns(3)
-    with c1:kpi("Visible rows",f"{len(filtered):,}","after sidebar filters")
-    with c2:kpi("Missing cells",f"{int(filtered.isna().sum().sum()):,}","before median cleaning")
-    with c3:kpi("Columns",f"{filtered.shape[1]}","features + target + status")
-    st.markdown('<div class="section">Dataset preview</div>',unsafe_allow_html=True)
-    st.dataframe(filtered.head(100),use_container_width=True,hide_index=True,height=440)
-    st.markdown('<div class="section">Data quality</div>',unsafe_allow_html=True)
-    missing=filtered.isna().sum().rename("Missing").reset_index().rename(columns={"index":"Feature"});missing=missing[missing.Missing>0]
-    if missing.empty: st.success("No missing values in the current filtered view.")
-    else:
-        missing["Rate"]=missing["Missing"]/len(filtered)
-        fig=px.bar(missing,x="Rate",y="Feature",orientation="h",text=missing["Rate"].map(lambda x:f"{x:.1%}"),title="Missing-value rate",color="Rate",color_continuous_scale=["#203b58","#ffad66"]);fig.update_coloraxes(showscale=False);st.plotly_chart(chart_layout(fig,300),use_container_width=True)
-    fig=px.imshow(filtered.select_dtypes(include=np.number).corr().round(2),text_auto=True,color_continuous_scale="RdBu_r",zmin=-1,zmax=1,title="Numeric correlation matrix",aspect="auto");st.plotly_chart(chart_layout(fig,560),use_container_width=True)
-
-elif page=="Model Lab":
-    page_header("Model comparison","Both models use the same 80/20 split and the same preprocessing pipeline, so the comparison is fair.","MODEL LAB")
-    c1,c2,c3,c4=st.columns(4);best=metrics.loc[metrics["R² Score"].idxmax(),"Model"]
+elif page=="4 · Model Comparison":
+    page_header(
+        "4. Model comparison",
+        "Both models see the same cleaned data, the same 80/20 train-test split, and the same preprocessing pipeline. That makes the comparison fair.",
+        "STEP 04 · MODELS"
+    )
+    best=metrics.loc[metrics["R² Score"].idxmax(),"Model"]
+    c1,c2,c3,c4=st.columns(4)
     with c1:kpi("Best R²",f"{metrics['R² Score'].max():.3f}",best)
     with c2:kpi("Best MAE",f"{metrics['MAE'].min():.2f}","lower is better")
     with c3:kpi("Best RMSE",f"{metrics['RMSE'].min():.2f}","lower is better")
     with c4:kpi("Validation split","80 / 20","train / test")
-    display=metrics.copy();display["MAE"]=display["MAE"].map(lambda x:f"{x:.3f}");display["RMSE"]=display["RMSE"].map(lambda x:f"{x:.3f}");display["R² Score"]=display["R² Score"].map(lambda x:f"{x:.3f}")
-    st.markdown('<div class="section">Validation scorecard</div>',unsafe_allow_html=True);st.dataframe(display,use_container_width=True,hide_index=True)
+    st.markdown('<div class="section">Validation scorecard</div>',unsafe_allow_html=True)
+    display=metrics.copy()
+    display["MAE"]=display["MAE"].map(lambda x:f"{x:.3f}")
+    display["RMSE"]=display["RMSE"].map(lambda x:f"{x:.3f}")
+    display["R² Score"]=display["R² Score"].map(lambda x:f"{x:.3f}")
+    st.dataframe(display,use_container_width=True,hide_index=True)
     melted=metrics.melt(id_vars="Model",value_vars=["MAE","RMSE","R² Score"],var_name="Metric",value_name="Score")
-    fig=px.bar(melted,x="Metric",y="Score",color="Model",barmode="group",text_auto=".3f",title="Model metric comparison",color_discrete_sequence=["#55d6ff","#8b7cff"]);st.plotly_chart(chart_layout(fig,420),use_container_width=True)
-    if best=="Linear Regression":st.markdown('<div class="insight"><b>Result:</b> Linear Regression performs better on this synthetic dataset. Its R² is higher and its MAE/RMSE are lower than Random Forest. This fits the way the target cost was generated: mostly additive relationships between the input variables.</div>',unsafe_allow_html=True)
-    else:st.markdown('<div class="insight"><b>Result:</b> Random Forest performs better on this dataset, giving the stronger validation score across the selected metrics.</div>',unsafe_allow_html=True)
+    fig=px.bar(melted,x="Metric",y="Score",color="Model",barmode="group",text_auto=".3f",title="Model metric comparison",color_discrete_sequence=["#55d6ff","#8b7cff"])
+    st.plotly_chart(chart_layout(fig,420),use_container_width=True)
+    if best=="Linear Regression":
+        st.markdown('<div class="insight"><b>Best model: Linear Regression.</b><br>It has the highest R² and the lowest MAE and RMSE. The dataset target was created mainly from additive relationships, so a linear model fits the underlying pattern well.</div>',unsafe_allow_html=True)
+    else:
+        st.markdown('<div class="insight"><b>Best model: Random Forest.</b><br>It gives the stronger validation results across the selected metrics.</div>',unsafe_allow_html=True)
+    st.markdown('<div class="section">How to judge the models</div>',unsafe_allow_html=True)
+    st.markdown('<div class="insight"><b>MAE</b> tells us the average absolute prediction error. <b>RMSE</b> also measures error but penalizes larger mistakes more strongly. <b>R²</b> tells us how much of the variation in final mission cost is explained by the model. For MAE/RMSE, lower is better; for R², higher is better.</div>',unsafe_allow_html=True)
 
 else:
-    page_header("Test a new mission","Change the mission controls and compare the two trained cost estimates side by side.","MISSION EVALUATOR")
+    page_header(
+        "5. Predict performance",
+        "Enter a new mission profile and compare the final-cost estimates from both trained models.",
+        "STEP 05 · PREDICTION"
+    )
     left,right=st.columns([.85,1.15],gap="large")
     with left:
-        st.markdown('<div class="section">Mission controls</div>',unsafe_allow_html=True)
-        agency=st.selectbox("Agency type",AGENCIES);crewed=st.selectbox("Crewed status",["No","Yes"]);payload=st.slider("Payload mass (kg)",500,25000,8500,100);orbit=st.slider("Orbit altitude (km)",200,36000,12000,100)
-        budget=st.number_input("Budget (millions USD)",10.0,450.0,120.0,5.0);fuel=st.slider("Fuel efficiency score",0.0,100.0,72.0,.5);risk=st.slider("Risk mitigation index",0.0,1.0,.72,.01);testing=st.number_input("Testing hours logged",50,5000,1800,50);window=st.slider("Window alignment (%)",0.0,100.0,76.0,.5)
-        evaluate=st.button("Evaluate mission",type="primary",use_container_width=True)
+        st.markdown('<div class="section">New mission inputs</div>',unsafe_allow_html=True)
+        agency=st.selectbox("Agency type",AGENCIES)
+        crewed=st.selectbox("Crewed status",["No","Yes"])
+        payload=st.slider("Payload mass (kg)",500,25000,8500,100)
+        orbit=st.slider("Orbit altitude (km)",200,36000,12000,100)
+        budget=st.number_input("Budget (millions USD)",10.0,450.0,120.0,5.0)
+        fuel=st.slider("Fuel efficiency score",0.0,100.0,72.0,.5)
+        risk=st.slider("Risk mitigation index",0.0,1.0,.72,.01)
+        testing=st.number_input("Testing hours logged",50,5000,1800,50)
+        window=st.slider("Window alignment (%)",0.0,100.0,76.0,.5)
+        evaluate=st.button("Predict mission cost",type="primary",use_container_width=True)
     with right:
         st.markdown('<div class="section">Prediction output</div>',unsafe_allow_html=True)
         candidate=pd.DataFrame([{"agency_type":agency,"payload_mass_kg":payload,"orbit_altitude_km":orbit,"budget_millions_usd":budget,"fuel_efficiency_score":fuel,"risk_mitigation_index":risk,"testing_hours_logged":testing,"crewed_status":crewed,"window_alignment_pct":window}])
-        linear=models["Linear Regression"].predict(candidate)[0];forest=models["Random Forest"].predict(candidate)[0];expected=(linear+forest)/2
+        linear=models["Linear Regression"].predict(candidate)[0]
+        forest=models["Random Forest"].predict(candidate)[0]
+        expected=(linear+forest)/2
         if evaluate:
             a,b,c=st.columns(3)
             with a:kpi("Linear Regression",f"USD {linear:,.2f}M","estimated final cost")
             with b:kpi("Random Forest",f"USD {forest:,.2f}M","estimated final cost")
-            with c:kpi("Average estimate",f"USD {expected:,.2f}M","simple model average")
+            with c:kpi("Average estimate",f"USD {expected:,.2f}M","reference estimate")
             gauge=go.Figure(go.Indicator(mode="gauge+number",value=expected,number={"prefix":"USD ","suffix":"M","font":{"size":34}},title={"text":"Expected final mission cost"},gauge={"axis":{"range":[0,700]},"bar":{"color":"#55d6ff"},"bgcolor":"#102238","borderwidth":0,"steps":[{"range":[0,200],"color":"#102a35"},{"range":[200,450],"color":"#243047"},{"range":[450,700],"color":"#3a2734"}]}))
             st.plotly_chart(chart_layout(gauge,310),use_container_width=True)
             recommendations=[]
@@ -185,7 +277,9 @@ else:
             if recommendations:
                 st.warning("A few things stand out:")
                 for item in recommendations:st.write(f"• {item}")
-            else:st.success("The submitted mission profile looks balanced across the main controls.")
-        else:st.markdown('<div class="insight"><b>Ready when you are.</b><br>Set the mission controls on the left and run the evaluator. The models are already trained on the same cleaned dataset used in the Model Lab.</div>',unsafe_allow_html=True)
+            else:
+                st.success("The submitted mission profile looks balanced across the main controls.")
+        else:
+            st.markdown('<div class="insight"><b>Ready when you are.</b><br>Set the mission controls and run the prediction. Both models use the same cleaned dataset from the earlier project steps.</div>',unsafe_allow_html=True)
 
-st.markdown('<div class="footer">Orbital Engine · synthetic mission analytics lab project · no authentication required</div>',unsafe_allow_html=True)
+st.markdown('<div class="footer">Orbital Engine · space-mission data analytics lab project · no authentication required</div>',unsafe_allow_html=True)
